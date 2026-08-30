@@ -1,0 +1,18 @@
+Problema etá no item máximo produzido. Ele precisa ser acertado
+No caso do Tanembaum, sem limite de produção, não teria problema
+
+while é a região crítica
+
+*IMPORTANTE
+Se quisermos identificar 0,1,2... para cada thread produ
+for (i=0; i<THREADS;i++){
+  p[i] = i // passando 'i' por referência. 
+  if (pthread_create(&prod_handle[i], 0, (void*) producer, (void*) &i &p[i]))
+                                                                      ^------ passagem correta
+                                                                   ^---- 'i' é região crítica. Se passarmos o valor, ou a referencia
+                                                                          do valor, chamamos serialmente a função, mas não necessariam
+                                                                          a criação da thread acontecerá na ordem
+                                                                            - solicitei criação de 0, vai criar 0, block!
+                                                                            - solicitei criação de 1, vai criar 1, cria 1. 'i' = 1, block!
+                                                                            - cria 0, 'i' = 1
+}

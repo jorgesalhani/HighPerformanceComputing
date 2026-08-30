@@ -1,0 +1,61 @@
+Granulação 
+P0 envia SND, P1 recebe RCV. 
+usualmente demora na ordem de ms, já as execuções levam ns
+
+Granulação: relacionada ao tempo de demora entre rcv p1 e SND p0 que leva o p1
+- se muito fina, a qtd de instruções é pequena em relação ao tempo comunicação 
+- no limite, a granulação grossa é a execução do processo todo
+
+Métricas 
+Speedup: razão entre desempenho de antes e desempenho de agora
+- relativo: usual em relação ao tempo de resposta 
+
+Paralelismo ideal: 1-100s. Com 2, 50s. Não tem custo as mensagens entre processos 
+
+Tempo de execução é imutável 
+Tempo de resposta não é determinista. Depende do tanto de processos que existem no processador (controlado pelo SO)
+
+Quando construimos uma aplicação, o melhor custo é logaritmo. Qual seria a maior carga de trabalho para manter a eficiência constante
+
+E=sp/p eficiência. Superlinear, linear, sublinear
+Sublinear: tempo de overhead passa a ser maior
+
+PROVA!!
+Superlinear: processamento de matriz, pode ser menores matrizes por processador. Tem menos hit miss de dados em ram. Algo no hardware está melhorando
+
+Escalabilidade: como manter eficiência constante com aumento de carga de trabalho e o número de processadores
+
+---
+
+Modelo de máquina. Modelos de máquina, abstração de SO, portas lógicas, somador completo...
+
+Arquiteturas: conjunto de instruções, sincronia de processadores, paralela por Flynn
+
+Computacionais: modelos formais para modelagem, RAM PRAM BSP (ordem de computação, bigO)
+
+---
+
+Modelos de programação: descreve semântica da linguagem. Como codificar o algoritmo. Nível de paralelismo. 
+
+Granulação: em MPI a granulação é alta. Em GPU, fina
+Grau de paralelismo: engenharia de requisito de desempenho 
+Distribuição de tarefas: balanceamento de carga
+Modo de execução: SIMD, SPMD, MPMD, sinc ou async
+
+Sincronia: tick de clock (SIMD), async (outras)
+Passagem de mensagens e variáveis compartilhadas
+
+---
+
+Taxonomia de Flynn
+SISD, MISD, SIMD, MIMD
+máquina de VPN Neuman tem dois fluxos. Máquinas paralelas podem replicar memória ou funções 
+SISD: máquina usual. Operações sequenciais
+SIMD: operação com vetores. As operações são iguais e independentes (GPU executa no mesmo tick de clock, dados devem estar sequenciais na memória)
+MIMD: máquina async, múltiplas instruções por processo. Celulares e PCs
+MISD: várias instruções para um mesmo conjunto de dados. Máquina em pipeline
+
+SIMD - processador vetorial (com ponto flutuante) e matricial (sem ponto flutuante)
+MIMD - multiprocessador (memória compartilhada) e multicomputador (memória distribuída, uso de comunicação, e.g. SSH)
+
+COMA: protocolo de coerência de cache, para quando cada processador tem uma memória,

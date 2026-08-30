@@ -1,0 +1,54 @@
+OMP: solucionar problema de portabilidade entre plataformas
+-> é do desenvolvedor verificar dependências de dados, conflitos, condições de disputa e deadlocks
+
+Usa modelo de execução FORK-JOIN
+
+                   |-------|
+(master, 0) -------|-------|---->
+                   |-------|
+                   |-------|
+                            ^-- join
+
+                   ^-- fork
+
+                   ^ "tenho 1mi de iterações em um for
+                      quero dividir em 4 threads"
+
+
+main() {
+  for (i=0; i<8; i++) {
+    pthread_create()
+  }
+}
+  ^--- cria 8 threads. Temos, então 9 threads em execução (master + 8)
+
+Consistência de memória relaxada
+- threads armazenam dados em cache
+- não mantém consistência estrita com a memória física
+
+Se consistência é necessária: flush
+
+=============================
+
+#pragma omp <directive> [clause lst]
+             ^ parallel, for, sections
+
+             parallel indica para criar threads. Se usamos só o 'for'
+             tarefa vai ser dividida pela única thread master
+
+Usualmente criamos threads em relação ao número de núcleos que temos.
+Maquinas MIMD (pcs padrão) não são feitas a partir da carga de trabalho/granulação
+
+GPU foi pensada para ser arquitetura para granulação fina. Aí pode ser
+paralelizada
+
+gcc fonte.c -o binary -fopenmp
+                      ^-- se esquecer, os pragmas não são reconhecidos
+                          e o código não é paralelizado
+
+PROVA!!
+Problema de exclusão mútua
+- multiplicação de matrizes, por conta do produto escalar
+
+
+

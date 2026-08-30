@@ -1,0 +1,36 @@
+Token ring
+- Em um anel, um nó quer se comunicar com outro. Vai passando mensagem até chegar no destino
+A -> B
+^    v
+D <- C |
+       ^ bastão!
+
+Sincronização com semáforos por exclusão mútua. Só Quem tem o "bastão" (token) consegue acessar a região crítica
+- espera (sem_wait) -> possui token -> libera próximo 
+
+IDEIA GERAL
+===========
+
+#define THREADS 7
+tkn = 0
+sem_t permit[THREADS]
+
+void children() {
+  sem_wait(atual)
+  sem_post(proximo)
+}
+
+main() {
+  sem_init(&permit[0])
+
+  for() {
+    create_thread_filha
+  }
+
+  sem_post(&permit[1])
+
+  for () {
+    pthread_join()
+    sem_dest()
+  }
+}
