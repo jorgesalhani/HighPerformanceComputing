@@ -1,13 +1,11 @@
 /**
  * Following: https://www.eecs.umich.edu/courses/eecs570/discussions/w20/pthreads.html
  * 
- * compile: gcc serial.c -o out
- * run: time ./out.exe
+ * compile: gcc serial.c -o exec
+ * run: time ./exec.exe
  */
 
 #include <stdio.h>
-#include <sys/time.h>
-#include <stdint.h>
 
 #define DIM 1000
 
@@ -49,5 +47,6 @@ int main(void) {
   init();
   multiply();
   print();
+  
   return 0;
 }

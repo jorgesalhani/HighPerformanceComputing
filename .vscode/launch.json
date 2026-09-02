@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/jorge/Documents/GithubPessoal/HighPerformanceComputing/aula1",
-      "program": "c:/Users/jorge/Documents/GithubPessoal/HighPerformanceComputing/aula1/build/Debug/outDebug",
+      "cwd": "c:/Users/jorge/Documents/GithubPessoal/HighPerformanceComputing/Estudos/Matrix Multiply",
+      "program": "c:/Users/jorge/Documents/GithubPessoal/HighPerformanceComputing/Estudos/Matrix Multiply/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
