@@ -45,28 +45,6 @@ typedef struct {
   const char* ds_estado;
 } CelulaEstado;
 
-static const Cobertura TIPOS_COBERTURA[] = {
-  { {0, 9}, 0, "Água (10\%)" },
-  { {10, 19}, 1, "solo exposto (10\%)" },
-  { {20, 54}, 2, "vegetação rasteira (35\%)" },
-  { {55, 99}, 3, "Floresta (45\%) "}
-};
-
-static const FatorIncendio FATORES_INCENDIO[] = {
-  { 0, 0 },
-  { 1, 0 },
-  { 2, 8 },
-  { 3, 12 },
-};
-
-static const CelulaEstado TIPOS_ESTADO_CELULA[] = {
-  {0, "não combustível"},
-  {1, "intacta"},
-  {2, "em chamas"},
-  {3, "queimada"},
-  {4, "contenção"}
-};
-
 
 /**
 Definições de células
@@ -76,7 +54,8 @@ Definições de células
 */
 typedef struct {
   int id_estado;
-  int fator_inicio_incendio;
+  int id_cobertura;
+  int fator_incendio;
   int umidade;
 } Celula;
 
@@ -103,7 +82,7 @@ typedef struct {
  * ZONAS_CONTENCAO: zonas de contenção
  */
 struct input_configs {
-  int L, C, P, T, SEED, LIMIAR;
+  unsigned int L, C, P, T, SEED, LIMIAR;
   int VENTO_LINHA, VENTO_COLUNA, V;
   int F, Z;
   FocoIncendio** FOCOS_INCENDIO;
@@ -130,6 +109,7 @@ bool is_valid_configs_vento(struct input_configs* configs);
 bool is_valid_F_Z(struct input_configs* configs);
 bool is_valid_matrix_focos_incendio(struct input_configs* configs);
 bool is_valid_matrix_zonas_contencao(struct input_configs* configs);
+bool is_valid_foco_incendio_sobre_celula_combustivel(struct input_configs* configs, int id_cobertura, int i, int j);
 
 // Geração de cobertura
 
@@ -383,7 +363,7 @@ bool is_valid_matrix_focos_incendio(struct input_configs* configs) {
     }
 
     // Validação 6.3: Focos sobre células de combustivels
-    // TODO!
+    // Realizada após gerar matriz
 
     L = configs->FOCOS_INCENDIO[i]->L;
     C = configs->FOCOS_INCENDIO[i]->C;
@@ -485,6 +465,75 @@ bool is_valid_single_input_argument(int argc) {
   return argc == 2 ? true : false;
 }
 
+/**
+  { {0, 9}, 0, "Água (10\%)" },
+  { {10, 19}, 1, "solo exposto (10\%)" },
+  { {20, 54}, 2, "vegetação rasteira (35\%)" },
+  { {55, 99}, 3, "Floresta (45\%) "}
+  */
+int generate_cobertura(struct input_configs* configs) {
+  int valor = rand_r(&configs->SEED) % 100;
+  
+  if (valor <= 9) return 0;
+  if (valor <= 19) return 1;
+  if (valor <= 54) return 2;
+  
+  return 3;
+}
+
+/**
+  { 0, 0 },
+  { 1, 0 },
+  { 2, 8 },
+  { 3, 12 },
+*/
+int generate_fator_incendio(int id_cobertura) {
+  if (id_cobertura == 0 || id_cobertura == 1) return 0;
+  if (id_cobertura == 2) return 8;
+  return 12;
+}
+
+int generate_umidade(struct input_configs* configs) {
+  return rand_r(&configs->SEED) % 101;
+}
+
+int generate_estado(int id_cobertura) {
+  if (id_cobertura == 0 || id_cobertura == 1) return 0;
+  return 1;
+}
+
+bool is_valid_foco_incendio_sobre_celula_combustivel(struct input_configs* configs, int id_cobertura, int i, int j) {
+  // Validação 6.3: Focos sobre células de combustivels
+
+  if (id_cobertura == 2 || id_cobertura == 3) return true;
+  
+  for (int k = 0; k < configs->F; k++) {
+    if (configs->FOCOS_INCENDIO[k]->L == i && configs->FOCOS_INCENDIO[k]->C == j) {
+        printf("Focos posicionados sobre células combustíveis. Informado: (L,C) = (%d,%d)\n", i, j);
+        return false;
+    }
+  }
+
+  return true;
+}
+
+bool populate_matrix(int rows, int cols, struct input_configs* configs, Celula matrix[rows][cols]) {
+  for (int i = 0; i < configs->L; i++) {
+    for (int j = 0; j < configs->C; j++) {
+      int id_cobertura = generate_cobertura(configs);
+
+      matrix[i][j].id_cobertura = id_cobertura;
+      matrix[i][j].fator_incendio = generate_fator_incendio(id_cobertura);
+      matrix[i][j].umidade = generate_umidade(configs);
+      matrix[i][j].id_estado = generate_estado(id_cobertura);
+
+      if (!is_valid_foco_incendio_sobre_celula_combustivel(configs, id_cobertura, i, j)) return false;
+    }
+  }
+
+  return true;
+}
+
 int main(int argc, char* argv[]) {
   // Validação 1: Presença de uym único argumento
   if (!is_valid_single_input_argument(argc)) {
@@ -508,6 +557,12 @@ int main(int argc, char* argv[]) {
   print_loaded_input_configs(configs);
 
   Celula matrix[configs->L][configs->C];
+
+  if (!populate_matrix(configs->L, configs->C, configs, matrix)) {
+    perror("Falha ao popular matriz.\n");
+    free_input_configs(configs);
+    return EXIT_FAILURE;
+  }
 
   free_input_configs(configs);
   return EXIT_SUCCESS;
