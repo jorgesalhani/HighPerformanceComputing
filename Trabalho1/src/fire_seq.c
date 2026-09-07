@@ -29,35 +29,49 @@ typedef struct {
   int LI, CI, LF, CF;
 } ZonaContencao;
 
+/**
+ * Definições de célula
+ * 
+ * ====================
+ * ID_ESTADO: Código do estado da célula
+ * ID_COBERTURA: Código da cobertura da celula
+ * FATOR_INCENDIO: Fator para inicio de incendios, relativo ao tipo de cobertura
+ * UMIDADE: Valor de umidade da celula
+ */
 typedef struct {
-  int valor_gerado[2];
-  int codigo;
-  const char* ds_cobertura;
-} Cobertura;
-
-typedef struct {
-  int id_cobertura;
-  int fator;
-} FatorIncendio;
-
-typedef struct {
-  int codigo;
-  const char* ds_estado;
-} CelulaEstado;
+  int ID_ESTADO;
+  int ID_COBERTURA;
+  int FATOR_INCENDIO;
+  int UMIDADE;
+} Celula;
 
 
 /**
-Definições de células
-
-
-
-*/
+ * Vetor de tempo com métricas
+ * 
+ * ===========================
+ * PASSO: Valor incremental
+ * NAO_COMBUSTIVEIS: total de células em estado 0 (não combustível)
+ * COMBUSTIVEIS: total de celulas com cobertura 2 ou 3 (cobertura de vegestação rasteira ou floresta)
+ * INTACTAS: total de células em estado 1 (intacta)
+ * EM_CHAMAS: total de células em estado 2 (em chamas)
+ * QUEIMADAS: total de células em estado 3 (queimada)
+ * CONTENCAO: total de células em estado 4 (contenção)
+ * TOTAL_IGNICOES: total de ignoções ocorridas no passo atual
+ * PERCENTUAL_QUEIMADO: perc. de queimadas em relação ao estado inicial
+ * PERCENTUAL_PROTEGIDO: perc. de celulas de contenção em relação aos combustiveis no estado inicial
+ */
 typedef struct {
-  int id_estado;
-  int id_cobertura;
-  int fator_incendio;
-  int umidade;
-} Celula;
+  int PASSO;
+  int NAO_COMBUSTIVEIS;
+  int INTACTAS;
+  int EM_CHAMAS;
+  int QUEIMADAS;
+  int CONTENCAO;
+  int TOTAL_IGNICOES;
+  float PERCENTUAL_QUEIMADO;
+  float PERCENTUAL_PROTEGIDO;
+} Metrics;
 
 /**
  * Definições de entrada
@@ -502,6 +516,10 @@ int generate_estado(int id_cobertura) {
   return 1;
 }
 
+int calculate_linear_matrix_index(int row, int col, int C) {
+  return (int) row * C + col;
+}
+
 bool is_valid_foco_incendio_sobre_celula_combustivel(struct input_configs* configs, int id_cobertura, int i, int j) {
   // Validação 6.3: Focos sobre células de combustivels
 
@@ -517,15 +535,20 @@ bool is_valid_foco_incendio_sobre_celula_combustivel(struct input_configs* confi
   return true;
 }
 
-bool populate_matrix(int rows, int cols, struct input_configs* configs, Celula matrix[rows][cols]) {
+bool populate_matrix(struct input_configs* configs, Celula *matrix) {
+  if (!configs || !matrix) return false;
+
+
   for (int i = 0; i < configs->L; i++) {
     for (int j = 0; j < configs->C; j++) {
+      int idx = calculate_linear_matrix_index(i, j, configs->C);
+      
       int id_cobertura = generate_cobertura(configs);
-
-      matrix[i][j].id_cobertura = id_cobertura;
-      matrix[i][j].fator_incendio = generate_fator_incendio(id_cobertura);
-      matrix[i][j].umidade = generate_umidade(configs);
-      matrix[i][j].id_estado = generate_estado(id_cobertura);
+      
+      matrix[idx].ID_COBERTURA = id_cobertura;
+      matrix[idx].FATOR_INCENDIO = generate_fator_incendio(id_cobertura);
+      matrix[idx].UMIDADE = generate_umidade(configs);
+      matrix[idx].ID_ESTADO = generate_estado(id_cobertura);
 
       if (!is_valid_foco_incendio_sobre_celula_combustivel(configs, id_cobertura, i, j)) return false;
     }
@@ -533,6 +556,107 @@ bool populate_matrix(int rows, int cols, struct input_configs* configs, Celula m
 
   return true;
 }
+
+void print_state_matrix(struct input_configs* configs, Celula* matrix) {
+  for (int i = 0; i < configs->L; i++) {
+    for (int j = 0; j < configs->C; j++) {
+      int idx = calculate_linear_matrix_index(i, j, configs->C);
+      printf("%d ", matrix[idx].ID_ESTADO);
+    }
+    printf("\n");
+  }
+}
+
+void free_simulation_matrix(struct input_configs* configs, Celula* matrix) {
+  if (!matrix) return;
+  free(matrix);
+}
+
+Celula *build_linear_state_matrix(struct input_configs* configs) {
+  Celula *matrix = (Celula*) malloc((size_t) configs->L * configs->C * sizeof(Celula));
+  if (!matrix) return NULL;
+
+  return matrix;
+}
+
+
+Metrics *build_metrics_vector(struct input_configs* configs) {
+  Metrics *vector = (Metrics*) malloc(configs->P * sizeof(Metrics));
+  if (!vector) return NULL;
+  return vector;
+}
+
+void free_metrics_vector(Metrics *vector) {
+  if (!vector) return;
+  free(vector);
+}
+
+void free_mapa_contencao_vector(int *vector) {
+  if (!vector) return;
+  free(vector);
+}
+
+void apply_focos_iniciais_incendio(struct input_configs* configs, Celula* matrix) {
+  for (int i = 0; i < configs->F; i++) {
+    int idx = calculate_linear_matrix_index(configs->FOCOS_INCENDIO[i]->L, configs->FOCOS_INCENDIO[i]->C, configs->C);
+    printf("%d -> %d %d\n", idx, configs->FOCOS_INCENDIO[i]->L, configs->FOCOS_INCENDIO[i]->C);
+    matrix[idx].ID_ESTADO = 2;
+  }
+}
+
+int get_passo_ativacao_if_cell_in_zona_contencao(int row, int col, struct input_configs* configs) {
+  // Obter mínimo caso célula pertencer a zonas de contenção sobrepostas
+  // max(passo) = P-1
+  int min_passo_ativacao = configs->P;
+  for (int i = 0; i < configs->Z; i++) {
+    if (
+      (row >= configs->ZONAS_CONTENCAO[i]->LI && row <= configs->ZONAS_CONTENCAO[i]->LF) &&
+      (col >= configs->ZONAS_CONTENCAO[i]->CI && col <= configs->ZONAS_CONTENCAO[i]->CF)
+    ) min_passo_ativacao = configs->ZONAS_CONTENCAO[i]->PASSO_ATIVACAO < min_passo_ativacao ? configs->ZONAS_CONTENCAO[i]->PASSO_ATIVACAO : min_passo_ativacao;
+  }
+  return min_passo_ativacao == configs->P ? -1 : min_passo_ativacao;
+}
+
+int *build_mapa_contencao(struct input_configs* configs, Celula* matrix) {
+  int *ativacao = (int*) malloc((size_t) configs->L * configs->C * sizeof(int));
+  if (!ativacao) return NULL;
+
+  for (int i = 0; i < configs->L; i++) {
+    for (int j = 0; j < configs->C; j++) {
+      int idx = calculate_linear_matrix_index(i, j, configs->C);
+      ativacao[idx] = get_passo_ativacao_if_cell_in_zona_contencao(i, j, configs);
+    }
+  }
+  return ativacao;
+}
+
+void activate_zonas_contencao(struct input_configs* configs, Celula* matrix, int p) {
+  for (int i = 0; i < configs->Z; i++) {
+    if (configs->ZONAS_CONTENCAO[i]->PASSO_ATIVACAO != p) continue;
+    
+    for (int l = configs->ZONAS_CONTENCAO[i]->LI; l <= configs->ZONAS_CONTENCAO[i]->LF; l++) {
+      for (int c = configs->ZONAS_CONTENCAO[i]->CI; c <= configs->ZONAS_CONTENCAO[i]->CF; c++) {
+        int idx = calculate_linear_matrix_index(l, c, configs->C);
+        if (matrix[idx].ID_ESTADO != 1) continue;
+        matrix[idx].ID_ESTADO = 4;
+      }
+    }
+  }
+}
+
+void run_simulation(
+  struct input_configs* configs,
+  Celula *matrix_estado_atual,
+  Celula *matrix_proximo_estado,
+  Metrics *vetor_tempo_atual,
+  Metrics *vetor_proximo_tempo
+) {
+  for (int p = 0; p < configs->P; p++) {
+    activate_zonas_contencao(configs, matrix_estado_atual, p);
+  }
+
+}
+
 
 int main(int argc, char* argv[]) {
   // Validação 1: Presença de uym único argumento
@@ -556,14 +680,42 @@ int main(int argc, char* argv[]) {
 
   print_loaded_input_configs(configs);
 
-  Celula matrix[configs->L][configs->C];
+  Celula *matrix_estado_atual = build_linear_state_matrix(configs);
+  Celula *matrix_proximo_estado = build_linear_state_matrix(configs);
+  Metrics *vetor_tempo_atual = build_metrics_vector(configs);
+  Metrics *vetor_proximo_tempo = build_metrics_vector(configs);
+  int *vetor_ativacao = build_mapa_contencao(configs, matrix_estado_atual);
 
-  if (!populate_matrix(configs->L, configs->C, configs, matrix)) {
-    perror("Falha ao popular matriz.\n");
+  if (!matrix_estado_atual || !matrix_proximo_estado || !vetor_tempo_atual || !vetor_proximo_tempo || !vetor_ativacao) {
+    perror("Falha ao alocar memória para matriz");
+    free_simulation_matrix(configs, matrix_estado_atual);
+    free_simulation_matrix(configs, matrix_proximo_estado);
+    free_metrics_vector(vetor_tempo_atual);
+    free_metrics_vector(vetor_proximo_tempo);
+    free_mapa_contencao_vector(vetor_ativacao);
     free_input_configs(configs);
     return EXIT_FAILURE;
   }
 
+  if (!populate_matrix(configs, matrix_estado_atual) || !populate_matrix(configs, matrix_proximo_estado)) {
+    perror("Falha ao popular matriz.\n");
+    free_simulation_matrix(configs, matrix_estado_atual);
+    free_simulation_matrix(configs, matrix_proximo_estado);
+    free_metrics_vector(vetor_tempo_atual);
+    free_metrics_vector(vetor_proximo_tempo);
+    free_mapa_contencao_vector(vetor_ativacao);
+    free_input_configs(configs);
+    return EXIT_FAILURE;
+  }
+
+  apply_focos_iniciais_incendio(configs, matrix_estado_atual);
+  print_state_matrix(configs, matrix_estado_atual);
+
+  free_simulation_matrix(configs, matrix_estado_atual);
+  free_simulation_matrix(configs, matrix_proximo_estado);
+  free_metrics_vector(vetor_tempo_atual);
+  free_metrics_vector(vetor_proximo_tempo);
+  free_mapa_contencao_vector(vetor_ativacao);
   free_input_configs(configs);
   return EXIT_SUCCESS;
 }
