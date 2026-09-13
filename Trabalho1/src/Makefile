@@ -1,9 +1,9 @@
 CFLAGS = -Wall -g
 LPTHREADFLAGS = -D_REENTRANT -lpthread
-TARGET = fire_seq
+TARGET = fire_seq.out
 SRC = fire_seq.c
 INPUT_FILE = entrada_carga_pequena.txt
-OUTPUT_FILE = ../relatorio/output
+OUTPUT_FILE = ../relatorio/output.out
 
 all: ${TARGET}
 

@@ -117,7 +117,7 @@ def plot_simulation_step(matrix: List[List[int]], timestep: int, save_path: str)
 
 
 if __name__ == "__main__":
-    filepath = "output"
+    filepath = "output.out"
     
     data = parse_simulation_file(filepath)
     # print(data[0], data[1], data[2])
