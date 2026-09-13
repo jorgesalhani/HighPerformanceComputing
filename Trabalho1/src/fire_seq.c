@@ -333,17 +333,19 @@ void free_input_configs(struct input_configs* configs) {
 
 void print_loaded_input_configs(struct input_configs* configs) {
   printf("=== Input Configuration Loaded ===\n");
-  printf("Matrix (LxC): %dx%d | Steps (P): %d | Threads (T): %d | Seed : %d | Limiar: %d\n",
+  printf("Matrix (LxC) | Steps (P) | Threads (T) | Seed | Limiar\n");
+  printf("%dx%d | %d | %d | %d | %d\n",
           configs->L, configs->C, configs->P, configs->T, configs->SEED, configs->LIMIAR);
-  printf("Vento (direção L, C): [%d, %d] V: %d\n",
+  printf("Vento (direção L, C) | V\n");
+  printf("%d,%d | %d\n",
           configs->VENTO_LINHA, configs->VENTO_COLUNA, configs->V);
-  printf("Focos (F = %d):\n", configs->F);
+  printf("Focos (F): %d:\n", configs->F);
   for (int i = 0; i < configs->F; i++) {
-      printf("  - Foco %d (L, C): %d, %d\n", i + 1, configs->FOCOS_INCENDIO[i]->L, configs->FOCOS_INCENDIO[i]->C);
+    printf("  - %d: %d, %d\n", i + 1, configs->FOCOS_INCENDIO[i]->L, configs->FOCOS_INCENDIO[i]->C);
   }
-  printf("Zonas (Z = %d):\n", configs->Z);
+  printf("Zonas (Z): %d:\n", configs->Z);
   for (int i = 0; i < configs->Z; i++) {
-      printf("  - Zona %d: Passo=%d, Range (LI, CI): [%d, %d] (LF, CF): [%d, %d]\n",
+      printf("  - %d: %d, [%d, %d] [%d, %d]\n",
         i + 1,
         configs->ZONAS_CONTENCAO[i]->PASSO_ATIVACAO,
         configs->ZONAS_CONTENCAO[i]->LI, configs->ZONAS_CONTENCAO[i]->CI,
@@ -677,11 +679,31 @@ bool populate_matrix(struct input_configs* configs, Celula *matrix) {
   return true;
 }
 
-void print_state_matrix(struct input_configs* configs, Celula* matrix) {
+void print_state_matrix(struct input_configs* configs, Celula* matrix, int metric) {
   for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
     if (i % configs->C  == 0) printf("\n");
-    printf("%d", matrix[i].ID_ESTADO);
+    switch (metric){
+      case 0:
+        printf("%d ", matrix[i].ID_ESTADO);
+        break;
+      case 1:
+        printf("%d ", matrix[i].ID_COBERTURA);
+        break;
+      case 2:
+        printf("%d ", matrix[i].FATOR_INCENDIO);
+        break;
+      case 3:
+        printf("%d ", matrix[i].UMIDADE);
+        break;
+      case 4:
+        printf("%d ", matrix[i].TEMPO_QUEIMA);
+        break;
+      
+      default:
+        break;
+    }
   }
+  printf("\n");
 }
 
 void free_simulation_matrix(struct input_configs* configs, Celula* matrix) {
@@ -815,13 +837,24 @@ void activate_zonas_contencao(struct input_configs* configs, Celula* matrix, int
   }
 }
 
+bool check_in_matrix_boundaries(
+  struct input_configs* configs, 
+  int neighbor_row,
+  int neighbor_col
+) {
+  return (
+    (neighbor_row >= 0 && neighbor_row < configs->L) &&
+    (neighbor_col >= 0 && neighbor_col < configs->C)
+  );
+}
+
 /**
  * 8. Cálculo do potencial de ignição
  * 
  * 8.1: Sentido de propagação do vento
  * 
  */
-int calculate_potencial_ignicao(struct input_configs* configs, int idx_atual, Celula* matrix_atual, Celula* matrix_proximo) {
+int calculate_potencial_ignicao(struct input_configs* configs, int idx_atual, Celula* matrix_atual) {
   // Vizinhos de Moore para matriz linear, sendo 
   //  - x a posição da célula corrente, dado por (x_i, x_j)
   //  - L: número de linhas na matriz
@@ -856,8 +889,8 @@ int calculate_potencial_ignicao(struct input_configs* configs, int idx_atual, Ce
   int C = configs->C;
 
   int vizinhos_moore[8] = {
-    C, C, 1, 1,         // vizinhos ortogonais
-    C-1, C+1, C-1, C+1  // vizinhos diagonais
+    -C, C, -1, 1,         // vizinhos ortogonais
+    -C-1, -C+1, C-1, C+1  // vizinhos diagonais
   };
 
   int linha_celula = idx_atual / C;
@@ -866,43 +899,25 @@ int calculate_potencial_ignicao(struct input_configs* configs, int idx_atual, Ce
   // S = sum(𝑃𝑣)
   int S = 0;
   
-  // Vizinhos ortogonais
-  int peso_basico = 10;
   for (int i = 0; i < 8; i++) {
-    int idx_vizinho = (idx_atual + vizinhos_moore[i] > 0 && idx_atual + vizinhos_moore[i] < C*configs->L) ? idx_atual + vizinhos_moore[i] : -1;
-    
-    // Apenas calcular caso vizinho pertença à matriz linear
-    if (idx_vizinho == -1) continue;
+    int idx_vizinho = idx_atual + vizinhos_moore[i];
 
     int linha_vizinho = idx_vizinho / C;
     int coluna_vizinho = idx_vizinho % C;
     
     int prop_linha = linha_celula - linha_vizinho;
     int prop_coluna = coluna_celula - coluna_vizinho;
-
-    // 𝐴 = 𝑝𝑟𝑜𝑝_𝑙𝑖𝑛ℎ𝑎 × 𝑣𝑒𝑛𝑡𝑜_𝑙𝑖𝑛ℎ𝑎 + 𝑝𝑟𝑜𝑝_𝑐𝑜𝑙𝑢𝑛𝑎 × 𝑣𝑒𝑛𝑡𝑜_𝑐𝑜𝑙𝑢𝑛a
-    int A = prop_linha*configs->VENTO_LINHA + prop_coluna*configs->VENTO_COLUNA;
-
-    // 𝑃𝑣 = max(1, 𝑃básico + 𝑖𝑛𝑡𝑒𝑛𝑠𝑖𝑑𝑎𝑑𝑒 × 𝐴)
-    int peso_calculado_int_a = peso_basico + (configs->V * A);
-    int peso_vizinho = peso_calculado_int_a > 1 ? peso_calculado_int_a : 1;
-
-    S += peso_vizinho;
-  }
-
-  // Vizinhos diagonais
-  peso_basico = 7;
-  for (int i = 4; i < 8; i++) {
-    int idx_vizinho = (idx_atual + vizinhos_moore[i] > 0 && idx_atual + vizinhos_moore[i] < C*configs->L) ? idx_atual + vizinhos_moore[i] : -1;
     
-    // Apenas calcular caso vizinho pertença à matriz linear
-    if (idx_vizinho == -1) continue;
-
-    int linha_vizinho = idx_vizinho / C;
-    int coluna_vizinho = idx_vizinho % C;
+    // Caso fora dos limites, evitar calculo
+    if (!check_in_matrix_boundaries(configs, linha_vizinho, coluna_vizinho)) continue;
     
-    int prop_linha = linha_celula - linha_vizinho;
-    int prop_coluna = coluna_celula - coluna_vizinho;
+    // Considerar apernas se vizinho em estado 'em chamas'
+    if (matrix_atual[idx_vizinho].ID_ESTADO != 2) continue;
+
+    // Casos peso_basico:
+    //  - Vizinho ortogonal: 10
+    //  - Vizinho diagonal: 7
+    int peso_basico = (abs(prop_linha) + abs(prop_coluna) == 1) ? 10 : 7;
 
     // 𝐴 = 𝑝𝑟𝑜𝑝_𝑙𝑖𝑛ℎ𝑎 × 𝑣𝑒𝑛𝑡𝑜_𝑙𝑖𝑛ℎ𝑎 + 𝑝𝑟𝑜𝑝_𝑐𝑜𝑙𝑢𝑛𝑎 × 𝑣𝑒𝑛𝑡𝑜_𝑐𝑜𝑙𝑢𝑛a
     int A = prop_linha*configs->VENTO_LINHA + prop_coluna*configs->VENTO_COLUNA;
@@ -932,6 +947,7 @@ int calculate_potencial_ignicao(struct input_configs* configs, int idx_atual, Ce
  */
 void update_matrix(struct input_configs* configs, Celula* matrix_atual, Celula* matrix_proximo) {
   for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
+    matrix_proximo[i].ID_ESTADO = matrix_atual[i].ID_ESTADO;
     // Célula que permanecem
     // - não combustível (= 0)
     // - queimada (= 3)
@@ -940,7 +956,9 @@ void update_matrix(struct input_configs* configs, Celula* matrix_atual, Celula* 
       matrix_atual[i].ID_ESTADO == 0 ||
       matrix_atual[i].ID_ESTADO == 3 ||
       matrix_atual[i].ID_ESTADO == 4
-    ) continue;
+    ) {
+      continue;
+    }
 
     // Se célula em chamas (= 2)
     if (matrix_atual[i].ID_ESTADO == 2) {
@@ -955,7 +973,7 @@ void update_matrix(struct input_configs* configs, Celula* matrix_atual, Celula* 
     }
 
     // Caso contrário: Célula intacta (= 1), calcular potencial de ignicao
-    int potencial_ignicao = calculate_potencial_ignicao(configs, i, matrix_atual, matrix_proximo);
+    int potencial_ignicao = calculate_potencial_ignicao(configs, i, matrix_atual);
 
     // Se potencial_ignicao < LIMIAR, manter intacta (= 1)
     if (potencial_ignicao < configs->LIMIAR) continue;
@@ -1020,7 +1038,6 @@ void calculate_metrics_resultados(
 ) {
   vetor_tempo_atual[p].PASSO = p;
   int combustiveis_iniciais = 0;
-  print_metrics(vetor_tempo_atual[p]);
   
   for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
     if (matrix_atual[i].ID_COBERTURA == 2 || matrix_atual[i].ID_COBERTURA == 3) combustiveis_iniciais++;
@@ -1056,7 +1073,6 @@ void calculate_metrics_resultados(
   vetor_tempo_atual[p].PERCENTUAL_PROTEGIDO = combustiveis_iniciais == 0
     ? 0
     : 100 * ((vetor_tempo_atual[p].CONTENCAO) / combustiveis_iniciais);
-  print_metrics(vetor_tempo_atual[p]);
 }
 
 /**
@@ -1090,19 +1106,24 @@ void run_simulation(
 ) {
   int p = 0;
   do {
+    // PRINT CONFIG:
+    // Relevante para visualização
+    printf("%d %d %d", configs->L, configs->C, p);
     // Para cada passo p da simulação
 
     // 1. Ativar as zonas programadas para p
     activate_zonas_contencao(configs, matrix_estado_atual, vetor_ativacao, p);
-    // print_state_matrix(configs, matrix_estado_atual);
 
     // 2. Calcular o próximo estado de todas as células
     update_matrix(configs, matrix_estado_atual, matrix_proximo_estado);
     
     // 3. Calcular estatísticas do próximo estado
     calculate_metrics_resultados(p, configs, vetor_tempo_atual, vetor_proximo_tempo, matrix_estado_atual, matrix_proximo_estado);
-    print_metrics(vetor_tempo_atual[p]);
-    print_state_matrix(configs, matrix_estado_atual);
+    // print_metrics(vetor_tempo_atual[p]);
+
+    // PRINT DATA:
+    // Relevante para visualização
+    print_state_matrix(configs, matrix_estado_atual, 0);
 
     // 4. Trocar as matrizes
     Celula* matrix_tmp = matrix_estado_atual;
@@ -1111,7 +1132,6 @@ void run_simulation(
 
     p++;
     // 5. Verificar condição de parada
-    if (p == 2) break;
   } while (check_stop_condition(configs, vetor_tempo_atual[p-1]));
 }
 
@@ -1149,7 +1169,7 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  print_loaded_input_configs(configs);
+  // print_loaded_input_configs(configs);
 
   Celula *matrix_estado_atual = build_linear_state_matrix(configs);
   Celula *matrix_proximo_estado = build_linear_state_matrix(configs);
@@ -1181,12 +1201,11 @@ int main(int argc, char* argv[]) {
 
   apply_focos_iniciais_incendio(configs, matrix_estado_atual);
   apply_focos_iniciais_incendio(configs, matrix_proximo_estado);
-  // print_state_matrix(configs, matrix_estado_atual);
 
   run_simulation(configs, matrix_estado_atual, matrix_proximo_estado, vetor_ativacao, vetor_tempo_atual, vetor_proximo_tempo);
 
-  unsigned long long checksum = calculate_checksum(configs, matrix_estado_atual, vetor_tempo_atual);
-  printf("Checksum: %llu\n", checksum);
+  // unsigned long long checksum = calculate_checksum(configs, matrix_estado_atual, vetor_tempo_atual);
+  // printf("Checksum: %llu\n", checksum);
 
   free_simulation_matrix(configs, matrix_estado_atual);
   free_simulation_matrix(configs, matrix_proximo_estado);
