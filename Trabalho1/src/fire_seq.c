@@ -65,6 +65,7 @@ typedef struct {
  */
 typedef struct {
   int PASSO;
+  int COMBUSTIVEIS;
   int NAO_COMBUSTIVEIS;
   int INTACTAS;
   int EM_CHAMAS;
@@ -127,6 +128,7 @@ bool is_valid_matrix_zonas_contencao(struct input_configs* configs);
 bool is_valid_foco_incendio_sobre_celula_combustivel(struct input_configs* configs, int id_cobertura, unsigned long long);
 
 // Geração de cobertura
+Celula *build_linear_state_matrix(struct input_configs* configs);
 
 
 /**
@@ -679,6 +681,21 @@ bool populate_matrix(struct input_configs* configs, Celula *matrix) {
   return true;
 }
 
+Celula *copy_matrix(struct input_configs* configs, Celula *matrix) {
+  if (!configs || !matrix) return false;
+  Celula *cp_matrix = build_linear_state_matrix(configs);
+
+  for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
+    cp_matrix[i].ID_COBERTURA = matrix[i].ID_COBERTURA;
+    cp_matrix[i].FATOR_INCENDIO = matrix[i].FATOR_INCENDIO;
+    cp_matrix[i].UMIDADE = matrix[i].UMIDADE;
+    cp_matrix[i].ID_ESTADO = matrix[i].ID_ESTADO;
+    cp_matrix[i].TEMPO_QUEIMA = matrix[i].TEMPO_QUEIMA;
+  }
+
+  return cp_matrix;
+}
+
 void print_state_matrix(struct input_configs* configs, Celula* matrix, int metric) {
   for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
     if (i % configs->C  == 0) printf("\n");
@@ -736,6 +753,7 @@ Metrics *build_metrics_vector(struct input_configs* configs) {
     vector[i].EM_CHAMAS = 0;
     vector[i].INTACTAS = 0;
     vector[i].NAO_COMBUSTIVEIS = 0;
+    vector[i].COMBUSTIVEIS = 0;
     vector[i].PASSO = 0;
     vector[i].PERCENTUAL_PROTEGIDO = 0;
     vector[i].PERCENTUAL_QUEIMADO = 0;
@@ -997,9 +1015,14 @@ bool check_stop_condition(struct input_configs* configs, Metrics item_vetor_temp
   return item_vetor_tempo.EM_CHAMAS != 0 && item_vetor_tempo.PASSO < configs->P;
 }
 
+void print_metrics_csv_header() {
+  printf("PASSO,COMBUSTIVEIS,NAO_COMBUSTIVEIS,INTACTAS,EM_CHAMAS,QUEIMADAS,CONTENCAO,TOTAL_IGNICOES,PERCENTUAL_QUEIMADO,PERCENTUAL_PROTEGIDO\n");
+}
+
 void print_metrics(Metrics item_vetor_tempo) {
-  printf("PASSO: %d | NAO_COMBUSTIVEIS %d | INTACTAS %d | EM_CHAMAS %d | QUEIMADAS %d | CONTENCAO %d | TOTAL_IGNICOES %d | PERCENTUAL_QUEIMADO %.2f | PERCENTUAL_PROTEGIDO %.2f\n", 
+  printf("%d,%d,%d,%d,%d,%d,%d,%d,%.2f,%.2f\n", 
       item_vetor_tempo.PASSO,
+      item_vetor_tempo.COMBUSTIVEIS,
       item_vetor_tempo.NAO_COMBUSTIVEIS,
       item_vetor_tempo.INTACTAS,
       item_vetor_tempo.EM_CHAMAS,
@@ -1009,12 +1032,6 @@ void print_metrics(Metrics item_vetor_tempo) {
       item_vetor_tempo.PERCENTUAL_QUEIMADO,
       item_vetor_tempo.PERCENTUAL_PROTEGIDO
     );
-}
-
-void print_time_vector_metrics(struct input_configs* configs, Metrics* vetor_tempo) {
-  for (unsigned long long i = 0; i < configs->L * configs->C; i++) {
-    print_metrics(vetor_tempo[i]);
-  }
 }
 
 /**
@@ -1048,7 +1065,7 @@ void calculate_metrics_resultados(
         break;
       case 1:
         vetor_tempo_atual[p].INTACTAS += 1;
-        if (matrix_proximo[i].ID_ESTADO == 2) vetor_proximo_tempo[p].TOTAL_IGNICOES++;
+        if (matrix_proximo[i].ID_ESTADO == 2) vetor_tempo_atual[p].TOTAL_IGNICOES++;
         break;
       case 2:
         vetor_tempo_atual[p].EM_CHAMAS += 1;
@@ -1063,16 +1080,17 @@ void calculate_metrics_resultados(
         break;
     }
   }
+  vetor_tempo_atual[p].COMBUSTIVEIS = combustiveis_iniciais;
   
   // 𝑝𝑒𝑟𝑐𝑒𝑛𝑡𝑢𝑎𝑙_𝑞𝑢𝑒𝑖𝑚𝑎𝑑𝑜 = 100 × (𝑞𝑢𝑒𝑖𝑚𝑎𝑑𝑎𝑠 + 𝑒𝑚_𝑐ℎ𝑎𝑚𝑎𝑠 / 𝑐𝑜𝑚𝑏𝑢𝑠𝑡𝚤𝑣𝑒𝑖𝑠_𝑖𝑛𝑖𝑐𝑖𝑎𝑖s)
   vetor_tempo_atual[p].PERCENTUAL_QUEIMADO = combustiveis_iniciais == 0 
     ? 0 
-    : 100 * ((vetor_tempo_atual[p].QUEIMADAS + vetor_tempo_atual[p].EM_CHAMAS) / combustiveis_iniciais);
+    : 100 * ((float)(vetor_tempo_atual[p].QUEIMADAS + vetor_tempo_atual[p].EM_CHAMAS) / combustiveis_iniciais);
 
   // 𝑝𝑒𝑟𝑐𝑒𝑛𝑡𝑢𝑎𝑙_𝑝𝑟𝑜𝑡𝑒𝑔𝑖𝑑𝑜 = 100 × (𝑐𝑜𝑛𝑡𝑒𝑛𝑐𝑎𝑜 / 𝑐𝑜𝑚𝑏𝑢𝑠𝑡𝑖𝑣𝑒𝑖𝑠_𝑖𝑛𝑖𝑐𝑖𝑎𝑖𝑠)
   vetor_tempo_atual[p].PERCENTUAL_PROTEGIDO = combustiveis_iniciais == 0
     ? 0
-    : 100 * ((vetor_tempo_atual[p].CONTENCAO) / combustiveis_iniciais);
+    : 100 * ((float)(vetor_tempo_atual[p].CONTENCAO) / combustiveis_iniciais);
 }
 
 /**
@@ -1104,26 +1122,46 @@ void run_simulation(
   Metrics *vetor_tempo_atual,
   Metrics *vetor_proximo_tempo
 ) {
+    /**
+   * ========================================
+   * PRINT DATA - csv header
+   * Relevante para visualização: 
+   *  - time_series
+   * ========================================
+   */
+  print_metrics_csv_header();
+
   int p = 0;
   do {
-    // PRINT CONFIG:
-    // Relevante para visualização
-    printf("%d %d %d", configs->L, configs->C, p);
     // Para cada passo p da simulação
-
+    
     // 1. Ativar as zonas programadas para p
     activate_zonas_contencao(configs, matrix_estado_atual, vetor_ativacao, p);
-
+    
     // 2. Calcular o próximo estado de todas as células
     update_matrix(configs, matrix_estado_atual, matrix_proximo_estado);
     
     // 3. Calcular estatísticas do próximo estado
     calculate_metrics_resultados(p, configs, vetor_tempo_atual, vetor_proximo_tempo, matrix_estado_atual, matrix_proximo_estado);
-    // print_metrics(vetor_tempo_atual[p]);
-
-    // PRINT DATA:
-    // Relevante para visualização
-    print_state_matrix(configs, matrix_estado_atual, 0);
+    
+    /**
+     * ========================================
+     * PRINT DATA - csv data
+     * Relevante para visualização: 
+     *  - time_series
+     * ========================================
+     */
+    print_metrics(vetor_tempo_atual[p]);
+    
+    /**
+     * ========================================
+     * PRINT DATA
+     * Relevante para visualização: 
+     *  - grid_states
+     * ========================================
+     */
+    // printf("%d %d %d", configs->L, configs->C, p);
+    // print_state_matrix(configs, matrix_estado_atual, 0);
 
     // 4. Trocar as matrizes
     Celula* matrix_tmp = matrix_estado_atual;
@@ -1172,15 +1210,13 @@ int main(int argc, char* argv[]) {
   // print_loaded_input_configs(configs);
 
   Celula *matrix_estado_atual = build_linear_state_matrix(configs);
-  Celula *matrix_proximo_estado = build_linear_state_matrix(configs);
   Metrics *vetor_tempo_atual = build_metrics_vector(configs);
   Metrics *vetor_proximo_tempo = build_metrics_vector(configs);
   int *vetor_ativacao = build_mapa_contencao(configs, matrix_estado_atual);
 
-  if (!matrix_estado_atual || !matrix_proximo_estado || !vetor_tempo_atual || !vetor_proximo_tempo || !vetor_ativacao) {
+  if (!matrix_estado_atual || !vetor_tempo_atual || !vetor_proximo_tempo || !vetor_ativacao) {
     perror("Falha ao alocar memória para matriz");
     free_simulation_matrix(configs, matrix_estado_atual);
-    free_simulation_matrix(configs, matrix_proximo_estado);
     free_metrics_vector(vetor_tempo_atual);
     free_metrics_vector(vetor_proximo_tempo);
     free_mapa_contencao_vector(vetor_ativacao);
@@ -1188,16 +1224,17 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  if (!populate_matrix(configs, matrix_estado_atual) || !populate_matrix(configs, matrix_proximo_estado)) {
+  if (!populate_matrix(configs, matrix_estado_atual)) {
     perror("Falha ao popular matriz.\n");
     free_simulation_matrix(configs, matrix_estado_atual);
-    free_simulation_matrix(configs, matrix_proximo_estado);
     free_metrics_vector(vetor_tempo_atual);
     free_metrics_vector(vetor_proximo_tempo);
     free_mapa_contencao_vector(vetor_ativacao);
     free_input_configs(configs);
     return EXIT_FAILURE;
   }
+
+  Celula *matrix_proximo_estado = copy_matrix(configs, matrix_estado_atual);
 
   apply_focos_iniciais_incendio(configs, matrix_estado_atual);
   apply_focos_iniciais_incendio(configs, matrix_proximo_estado);
